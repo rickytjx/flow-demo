@@ -9,3 +9,29 @@ body,
 html.dark {
   color-scheme: dark;
 }
+
+html.dark .vue-flow__controls {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.6);
+  overflow: hidden;
+}
+
+html.dark .vue-flow__controls-button {
+  background: transparent;
+  border-bottom: 1px solid #1e293b;
+  color: #e2e8f0;
+}
+
+html.dark .vue-flow__controls-button svg {
+  fill: currentColor;
+}
+
+html.dark .vue-flow__controls-button:hover {
+  background: #1e293b;
+}
+
+html.dark .vue-flow__controls-button:last-child {
+  border-bottom: 0;
+}

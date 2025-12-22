@@ -13,13 +13,17 @@
     "postinstall": "npx simple-git-hooks"
   },
   "dependencies": {
+    "@vue-flow/controls": "catalog:",
+    "@vue-flow/core": "catalog:",
     "@vueuse/core": "catalog:frontend",
+    "dagre": "catalog:",
     "vue": "catalog:frontend",
     "vue-router": "catalog:frontend"
   },
   "devDependencies": {
     "@antfu/eslint-config": "catalog:dev",
     "@iconify-json/carbon": "catalog:build",
+    "@types/dagre": "catalog:",
     "@types/node": "catalog:dev",
     "@unocss/eslint-plugin": "catalog:dev",
     "@vitejs/plugin-vue": "catalog:build",

@@ -4,6 +4,9 @@ import { routes } from 'vue-router/auto-routes'
 import App from './App.vue'
 
 import './styles/main.css'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
 import 'uno.css'
 
 const app = createApp(App)
