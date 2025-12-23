@@ -16,7 +16,9 @@
     "@vue-flow/controls": "catalog:",
     "@vue-flow/core": "catalog:",
     "@vueuse/core": "catalog:frontend",
+    "axios": "catalog:frontend",
     "dagre": "catalog:",
+    "mockjs": "catalog:frontend",
     "vue": "catalog:frontend",
     "vue-router": "catalog:frontend"
   },
@@ -24,6 +26,7 @@
     "@antfu/eslint-config": "catalog:dev",
     "@iconify-json/carbon": "catalog:build",
     "@types/dagre": "catalog:",
+    "@types/mockjs": "catalog:dev",
     "@types/node": "catalog:dev",
     "@unocss/eslint-plugin": "catalog:dev",
     "@vitejs/plugin-vue": "catalog:build",
@@ -42,6 +45,7 @@
     "unplugin-vue-macros": "catalog:build",
     "unplugin-vue-router": "catalog:build",
     "vite": "catalog:build",
+    "vite-plugin-mock": "catalog:build",
     "vitest": "catalog:dev",
     "vue-tsc": "catalog:dev"
   },

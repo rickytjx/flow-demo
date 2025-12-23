@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { Edge, Node, NodeMouseEvent } from '@vue-flow/core'
-import type { FlowNodeData, FlowStats } from '~/types/flow'
+import type { FlowNodeData, ProcessFlowData, ProcessFlowLink, ProcessFlowStep } from '~/types/flow'
 import { ControlButton, Controls } from '@vue-flow/controls'
 import { MarkerType, useVueFlow, VueFlow } from '@vue-flow/core'
+import { fetchProcessFlow } from '~/api/process-flow'
 import FlowTooltip from '~/components/FlowTooltip.vue'
 import ProcessNode from '~/components/ProcessNode.vue'
 import { useLayout } from '~/composables/useLayout'
@@ -11,9 +12,11 @@ defineOptions({
   name: 'IndexPage',
 })
 
-const seedText = ref('demo-mode')
+const seedText = ref('')
 const nodes = ref<Node<FlowNodeData>[]>([])
 const edges = ref<Edge[]>([])
+const isLoading = ref(false)
+const errorMessage = ref('')
 const nodeTypes = {
   process: markRaw(ProcessNode),
 }
@@ -32,107 +35,101 @@ const layout = useLayout({ direction: 'TB' })
 const flowId = 'process-flow'
 const { fitView } = useVueFlow({ id: flowId })
 const fitViewOptions = { padding: 0.2 }
+const maxNodes = 10
 
-const titlePool = [
-  'Application',
-  'Review',
-  'Approval',
-  'Risk Check',
-  'Investigation App',
-  'Archive',
-  'Verification',
-  'Assessment',
-  'Payment',
-  'Closure',
-]
-
-function seedFromString(input: string) {
-  let seed = 0
-  for (let i = 0; i < input.length; i += 1) {
-    seed = (seed + input.charCodeAt(i)) >>> 0
-  }
-  return seed || 1
+function formatMinutes(totalMinutes: number) {
+  const minutes = Number.isFinite(totalMinutes) ? totalMinutes : 0
+  if (minutes < 60)
+    return `${minutes.toFixed(1)}m`
+  if (minutes < 1440)
+    return `${(minutes / 60).toFixed(1)}h`
+  return `${(minutes / 1440).toFixed(1)}d`
 }
 
-function createRng(seed: number) {
-  let value = seed >>> 0
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0
-    return value / 0x100000000
-  }
-}
-
-function randomInt(rng: () => number, min: number, max: number) {
-  return Math.floor(rng() * (max - min + 1)) + min
-}
-
-function formatDuration(totalMinutes: number) {
-  if (totalMinutes < 60)
-    return `${totalMinutes.toFixed(1)}m`
-  if (totalMinutes < 1440)
-    return `${(totalMinutes / 60).toFixed(1)}h`
-  return `${(totalMinutes / 1440).toFixed(1)}d`
-}
-
-function buildStats(rng: () => number): FlowStats {
-  const caseCount = randomInt(rng, 120, 1200)
-  const minMinutes = randomInt(rng, 5, 120)
-  const medianMinutes = minMinutes + randomInt(rng, 30, 360)
-  const maxMinutes = medianMinutes + randomInt(rng, 180, 1440)
-
-  return {
-    caseCount,
-    executionCount: caseCount,
-    throughput: {
-      min: formatDuration(minMinutes),
-      median: formatDuration(medianMinutes),
-      max: formatDuration(maxMinutes),
+function mapStepsToNodes(steps: ProcessFlowStep[]): Node<FlowNodeData>[] {
+  return steps.map(step => ({
+    id: step.id,
+    type: 'process',
+    position: { x: 0, y: 0 },
+    data: {
+      title: step.name,
+      duration: formatMinutes(step.durationMinutes),
+      index: step.order,
+      stats: {
+        caseCount: step.stats.caseCount,
+        executionCount: step.stats.executionCount,
+        throughput: {
+          min: formatMinutes(step.stats.throughputMinutes.min),
+          median: formatMinutes(step.stats.throughputMinutes.median),
+          max: formatMinutes(step.stats.throughputMinutes.max),
+        },
+      },
     },
-  }
+  }))
 }
 
-function buildFlow(input: string) {
-  const seed = seedFromString(input.trim())
-  const rng = createRng(seed)
-  const count = randomInt(rng, 3, 10)
+function mapLinksToEdges(links: ProcessFlowLink[]): Edge[] {
+  return links.map(link => ({
+    id: link.id,
+    source: link.sourceId,
+    target: link.targetId,
+    type: 'smoothstep',
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+    },
+  }))
+}
 
-  const generatedNodes: Node<FlowNodeData>[] = Array.from({ length: count }, (_, index) => {
-    const title = titlePool[randomInt(rng, 0, titlePool.length - 1)]
-    const duration = formatDuration(randomInt(rng, 30, 6000))
-    const stats = buildStats(rng)
-    const id = `step-${index + 1}`
+function buildEdgesFromSteps(steps: ProcessFlowStep[]): Edge[] {
+  return steps.slice(0, -1).map((step, index) => ({
+    id: `edge-${step.id}-${steps[index + 1].id}`,
+    source: step.id,
+    target: steps[index + 1].id,
+    type: 'smoothstep',
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+    },
+  }))
+}
 
-    return {
-      id,
-      type: 'process',
-      position: { x: 0, y: 0 },
-      data: {
-        title,
-        duration,
-        index: index + 1,
-        stats,
-      },
-    }
-  })
+function applyFlow(data: ProcessFlowData) {
+  hideTooltip()
+  const sortedSteps = [...data.steps].sort((a, b) => a.order - b.order)
+  const nextNodes = mapStepsToNodes(sortedSteps)
+  const nextEdges = data.links.length > 0 ? mapLinksToEdges(data.links) : buildEdgesFromSteps(sortedSteps)
+  nodes.value = layout(nextNodes, nextEdges)
+  edges.value = nextEdges
+}
 
-  const generatedEdges: Edge[] = generatedNodes.slice(0, -1).map((node, index) => {
-    const target = generatedNodes[index + 1]
-    return {
-      id: `edge-${node.id}-${target.id}`,
-      source: node.id,
-      target: target.id,
-      type: 'smoothstep',
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        width: 16,
-        height: 16,
-      },
-    }
-  })
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error)
+    return error.message
+  return '请求失败'
+}
 
-  return {
-    nodes: generatedNodes,
-    edges: generatedEdges,
+async function handleRequest() {
+  const seed = seedText.value.trim()
+  if (!seed) {
+    errorMessage.value = '请输入测试字符串'
+    return
+  }
+
+  errorMessage.value = ''
+  isLoading.value = true
+
+  try {
+    const data = await fetchProcessFlow({ seed, maxNodes })
+    applyFlow(data)
+  }
+  catch (error) {
+    errorMessage.value = getErrorMessage(error)
+  }
+  finally {
+    isLoading.value = false
   }
 }
 
@@ -229,25 +226,14 @@ function handlePaneClick() {
     hideTooltip()
 }
 
-function rebuildFlow() {
-  hideTooltip()
-  const { nodes: nextNodes, edges: nextEdges } = buildFlow(seedText.value)
-  nodes.value = layout(nextNodes, nextEdges)
-  edges.value = nextEdges
-}
-
 function handleNodesInitialized() {
-  fitView(fitViewOptions)
+  if (nodes.value.length > 0)
+    fitView(fitViewOptions)
 }
-
-const rebuildFlowDebounced = useDebounceFn(rebuildFlow, 300)
 
 watch(seedText, () => {
-  rebuildFlowDebounced()
-})
-
-onMounted(() => {
-  rebuildFlow()
+  if (errorMessage.value)
+    errorMessage.value = ''
 })
 </script>
 
@@ -262,15 +248,29 @@ onMounted(() => {
           演示模式: 从输入生成确定性流程图
         </div>
       </div>
-      <div class="flex gap-3 items-center">
-        <label class="text-sm text-slate-600 dark:text-slate-300" for="seed-input">测试字符串</label>
-        <input
-          id="seed-input"
-          v-model="seedText"
-          type="text"
-          placeholder="Enter a string"
-          class="text-sm text-slate-800 px-3 py-2 border border-slate-200 rounded-md w-64 dark:text-slate-100 focus:outline-none dark:border-slate-700 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500"
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex flex-col gap-1 min-w-[220px]">
+          <label class="text-sm text-slate-600 dark:text-slate-300" for="seed-input">测试字符串</label>
+          <input
+            id="seed-input"
+            v-model="seedText"
+            type="text"
+            placeholder="输入字符串"
+            :disabled="isLoading"
+            class="text-sm text-slate-800 px-3 py-2 border border-slate-200 rounded-md w-64 dark:text-slate-100 focus:outline-none dark:border-slate-700 dark:bg-slate-900 disabled:opacity-70 disabled:cursor-not-allowed focus:ring-2 focus:ring-blue-500"
+          >
+          <div v-if="errorMessage" class="text-xs text-red-500 dark:text-red-400">
+            {{ errorMessage }}
+          </div>
+        </div>
+        <button
+          type="button"
+          :disabled="isLoading"
+          class="text-sm text-white font-semibold px-4 rounded-md bg-blue-600 h-10 shadow-sm transition dark:bg-blue-500 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed dark:hover:bg-blue-400"
+          @click="handleRequest"
         >
+          {{ isLoading ? '请求中...' : '获取流程' }}
+        </button>
       </div>
     </header>
 
@@ -295,8 +295,8 @@ onMounted(() => {
       >
         <Controls position="bottom-left">
           <ControlButton title="切换明暗" aria-label="切换明暗" @click="toggleDark()">
-            <div v-if="isDark" class="i-carbon-moon text-slate-200" />
-            <div v-else class="i-carbon-sun text-slate-700" />
+            <div v-if="isDark" class="i-carbon-sun text-slate-200" />
+            <div v-else class="i-carbon-moon text-slate-700" />
           </ControlButton>
         </Controls>
       </VueFlow>
